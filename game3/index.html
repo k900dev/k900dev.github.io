@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Dig Runner — Amblyopia Friendly</title>
+<style>
+  :root { --bg:#081019; --panel:#0f1722; --accent:#13a2ff; --muted:#93a3b0; color-scheme: dark; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial; background:var(--bg); color:#eaeef2; display:flex; flex-direction:column; align-items:center; padding:18px }
+  h1{margin:0 0 8px 0; font-size:20px}
+  p{margin:6px 0}
+  .wrap{max-width:1100px; width:100%; display:flex; gap:16px}
+  canvas{background:#000; border-radius:8px; display:block; width:100%; image-rendering: pixelated;}
+  .left{flex:1}
+  aside{width:320px; background:var(--panel); padding:12px; border-radius:8px; color:#d7e3ee}
+  label{display:block; font-size:13px; margin-top:10px}
+  input[type=range]{width:100%}
+  .controls{display:flex; gap:8px; margin-top:10px}
+  button{background:var(--accent); color:#001; border:none; padding:8px 10px; border-radius:6px; cursor:pointer}
+  button:disabled{opacity:.6; cursor:not-allowed}
+  .muted{color:var(--muted); font-size:13px}
+  .hud{display:flex; justify-content:space-between; margin-top:8px; font-weight:600}
+  .small{font-size:13px}
+</style>
+</head>
+<body>
+  <h1>Dig Runner — Therapy Mode</h1>
+  <p class="muted">Wear red (left) / cyan (right) anaglyph glasses. Increase clarity on the weaker eye. Swap channels if your glasses are flipped.</p>
+
+  <div class="wrap">
+    <div class="left">
+      <canvas id="game" width="900" height="540"></canvas>
+      <div class="hud small">
+        <div>Score: <span id="score">0</span></div>
+        <div>Lives: <span id="lives">3</span></div>
+        <div>Level: <span id="level">1</span></div>
+        <div>Gems left: <span id="gems">0</span></div>
+      </div>
+    </div>
+
+    <aside>
+      <h3>Therapy Settings</h3>
+
+      <label>Anaglyph Mode
+        <input id="anaglyph" type="checkbox" checked style="margin-left:8px"/>
+      </label>
+
+      <label>Swap Channels (flip L/R tints)
+        <input id="swap" type="checkbox" style="margin-left:8px"/>
+      </label>
+
+      <label>Left Eye Clarity: <span id="leftPct">100%</span>
+        <input id="leftCl" type="range" min="0" max="1" step="0.05" value="1"/>
+      </label>
+
+      <label>Right Eye Clarity: <span id="rightPct">40%</span>
+        <input id="rightCl" type="range" min="0" max="1" step="0.05" value="0.4"/>
+      </label>
+
+      <label>Difficulty (fall speed)
+        <input id="difficulty" type="range" min="0.8" max="1.8" step="0.05" value="1"/>
+      </label>
+
+      <div class="controls">
+        <button id="start">Start</button>
+        <button id="pause" disabled>Pause</button>
+        <button id="reset">Reset</button>
+      </div>
+
+      <div style="margin-top:12px" class="small">
+        <p><strong>Goal:</strong> Dig through dirt, collect all <em>gems</em>, avoid falling rocks and lava.</p>
+        <p><strong>Controls:</strong></p>
+        <ul>
+          <li>Move: ← / → / ↑ / ↓ or W / A / S / D</li>
+          <li>Dig by moving into dirt. You can push rocks sideways if space is clear.</li>
+        </ul>
+        <p>Short sessions (5–10 min). Stop if uncomfortable.</p>
+      </div>
+    </aside>
+  </div>
+
+<script>
+(() => {
+  // Canvas and HUD
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const scoreEl = document.getElementById('score');
+  const livesEl = document.getElementById('lives');
+  const levelEl = document.getElementById('level');
+  const gemsEl  = document.getElementById('gems');
+
+  // Therapy controls
+  const anaglyph = document.getElementById('anaglyph');
+  const swap = document.getElementById('swap');
+  const leftCl = document.getElementById('leftCl');
+  const rightCl = document.getElementById('rightCl');
+  const leftPct = document.getElementById('leftPct');
+  const rightPct = document.getElementById('rightPct');
+  const difficulty = document.getElementById('difficulty');
+
+  // Buttons
+  const btnStart = document.getElementById('start');
+  const btnPause = document.getElementById('pause');
+  const btnReset = document.getElementById('reset');
+
+  // Game constants
+  const COLS = 30, ROWS = 18;         // grid size
+  const TILE = Math.floor(canvas.width / COLS); // tile size in px
+  canvas.height = ROWS * TILE;
+
+  // Tile types
+  const EMPTY=0, DIRT=1, ROCK=2, GEM=3, LAVA=4, PLAYER=9;
+
+  // State
+  let grid = [];
+  let player = {c:1, r:1};
+  let running = false, raf = null, lastTime = 0;
+  let score = 0, lives = 3, level = 1;
+  let gemsLeft = 0;
+  let fallAccumulator = 0;
+  let fallRate = 250; // ms between physics steps, scaled by difficulty
+  const keys = {};
+
+  // Build level procedurally
+  function generateLevel() {
+    grid = new Array(ROWS).fill(0).map(()=>new Array(COLS).fill(DIRT));
+
+    // Carve empty air at top rows
+    for (let r=0;r<3;r++) for (let c=0;c<COLS;c++) grid[r][c] = EMPTY;
+
+    // Place walls around edges
+    for (let r=0;r<ROWS;r++){
+      grid[r][0] = ROCK;
+      grid[r][COLS-1] = ROCK;
+    }
+    for (let c=0;c<COLS;c++){
+      grid[ROWS-1][c] = ROCK;
+    }
+
+    // Sprinkle rocks, gems, lava pockets
+    gemsLeft = 0;
+    for (let r=2;r<ROWS-1;r++){
+      for (let c=1;c<COLS-1;c++){
+        if (Math.random() < 0.12) grid[r][c] = ROCK;
+        if (Math.random() < 0.09) grid[r][c] = GEM, gemsLeft++;
+        if (Math.random() < 0.03) grid[r][c] = LAVA;
+      }
+    }
+
+    // Make sure start area clear
+    player = {c: Math.floor(COLS/2), r: 1};
+    grid[player.r][player.c] = EMPTY;
+
+    updateHUD();
+  }
+
+  function updateHUD(){
+    scoreEl.textContent = score;
+    livesEl.textContent = lives;
+    levelEl.textContent = level;
+    gemsEl.textContent = gemsLeft;
+  }
+
+  // Movement & digging
+  function tryMove(dc, dr) {
+    const nc = player.c + dc, nr = player.r + dr;
+    if (nc < 0 || nc >= COLS || nr < 0 || nr >= ROWS) return;
+
+    const target = grid[nr][nc];
+
+    if (target === EMPTY || target === DIRT || target === GEM || target === LAVA) {
+      // Interactions
+      if (target === DIRT) grid[nr][nc] = EMPTY;
+      if (target === GEM) { score += 25; gemsLeft--; updateHUD(); }
+      if (target === LAVA) { loseLife(); return; }
+
+      player.c = nc; player.r = nr;
+      return;
+    }
+
+    // Push rock sideways if possible (classic boulder dash feel)
+    if (target === ROCK && dr === 0) {
+      const pushToC = nc + dc;
+      if (pushToC >= 0 && pushToC < COLS && grid[nr][pushToC] === EMPTY) {
+        grid[nr][pushToC] = ROCK;
+        grid[nr][nc] = EMPTY;
+        player.c = nc; player.r = nr;
+      }
+    }
+  }
+
+  function loseLife(){
+    lives--;
+    updateHUD();
+    if (lives <= 0) {
+      stopGame();
+      alert('Game Over');
+    } else {
+      // respawn near top, clear around
+      player = {c: Math.floor(COLS/2), r: 1};
+      for (let r=0;r<3;r++) for (let c=0;c<COLS;c++) if (grid[r][c] !== ROCK) grid[r][c] = EMPTY;
+    }
+  }
+
+  // Physics: rocks fall if empty below; rock-on-head hurts; lava spreads a little
+  function physicsStep(dtMs){
+    const diffFactor = parseFloat(difficulty.value);
+
+    // Rocks fall
+    for (let r=ROWS-2; r>=0; r--){
+      for (let c=1; c<COLS-1; c++){
+        if (grid[r][c] === ROCK){
+          const below = grid[r+1][c];
+          if (below === EMPTY) {
+            grid[r+1][c] = ROCK;
+            grid[r][c] = EMPTY;
+
+            // hit player?
+            if (player.r === r+1 && player.c === c) loseLife();
+          } else if (below === ROCK || below === GEM) {
+            // try to roll off diagonally
+            if (grid[r][c-1] === EMPTY && grid[r+1][c-1] === EMPTY) {
+              grid[r+1][c-1] = ROCK; grid[r][c] = EMPTY;
+            } else if (grid[r][c+1] === EMPTY && grid[r+1][c+1] === EMPTY) {
+              grid[r+1][c+1] = ROCK; grid[r][c] = EMPTY;
+            }
+          }
+        }
+      }
+    }
+
+    // Gentle lava spread (rare) – adds challenge
+    if (Math.random() < 0.02 * diffFactor) {
+      const c = 1 + Math.floor(Math.random()*(COLS-2));
+      const r = 2 + Math.floor(Math.random()*(ROWS-3));
+      if (grid[r][c] === EMPTY && Math.random()<0.2) grid[r][c] = LAVA;
+    }
+
+    // Win condition
+    if (gemsLeft <= 0){
+      level++;
+      score += 100;
+      generateLevel();
+    }
+  }
+
+  // Drawing helpers (pixel art style)
+  function drawCell(g, c, r, type, clarity){
+    const x = c*TILE, y = r*TILE;
+
+    if (type === EMPTY) {
+      // starry background
+      g.fillStyle = '#08121e';
+      g.fillRect(x, y, TILE, TILE);
+      if (Math.random() < 0.03*clarity){
+        g.fillStyle = '#0d2b4a';
+        g.fillRect(x+Math.floor(Math.random()*TILE), y+Math.floor(Math.random()*TILE), 1, 1);
+      }
+      return;
+    }
+
+    if (type === DIRT){
+      g.fillStyle = '#2a3a25';
+      g.fillRect(x, y, TILE, TILE);
+      g.fillStyle = '#3d4f37';
+      // clarity -> detail grains
+      const grains = Math.max(2, Math.round(clarity*6));
+      for (let i=0;i<grains;i++){
+        g.fillRect(x+2+((i*3)% (TILE-4)), y+2+((i*5)% (TILE-4)), 2, 2);
+      }
+      return;
+    }
+
+    if (type === ROCK){
+      g.fillStyle = '#808a92';
+      g.fillRect(x, y, TILE, TILE);
+      g.fillStyle = '#3b4248';
+      g.fillRect(x+2, y+2, TILE-4, TILE-4);
+      g.fillStyle = '#a7b0b9';
+      g.fillRect(x+4, y+4, TILE-10, 3);
+      return;
+    }
+
+    if (type === GEM){
+      g.fillStyle = '#a1f2ff';
+      g.fillRect(x, y, TILE, TILE);
+      g.fillStyle = '#2ad1ff';
+      g.beginPath();
+      g.moveTo(x+TILE*0.5, y+4);
+      g.lineTo(x+TILE-4, y+TILE*0.45);
+      g.lineTo(x+TILE*0.7, y+TILE-4);
+      g.lineTo(x+TILE*0.3, y+TILE-4);
+      g.lineTo(x+4, y+TILE*0.45);
+      g.closePath();
+      g.fill();
+      return;
+    }
+
+    if (type === LAVA){
+      g.fillStyle = '#7b1200';
+      g.fillRect(x, y, TILE, TILE);
+      g.fillStyle = '#ff3b00';
+      for (let i=0;i<3+Math.round(clarity*4);i++){
+        const px = x+4+((i*7)% (TILE-8));
+        const py = y+4+((i*11)% (TILE-8));
+        g.fillRect(px, py, 2, 2);
+      }
+      return;
+    }
+  }
+
+  function drawPlayer(g, clarity){
+    const x = player.c*TILE, y = player.r*TILE;
+    g.fillStyle = '#b5f0ff';
+    g.fillRect(x+4, y+TILE-10, TILE-8, 6);          // boots
+    g.fillStyle = '#82d7ff';
+    g.fillRect(x+6, y+6, TILE-12, TILE-14);         // body
+    // details increase with clarity
+    const lines = 1 + Math.round(clarity*3);
+    g.fillStyle = '#214e6f';
+    for (let i=0;i<lines;i++){
+      g.fillRect(x+8+i*3, y+8, 2, TILE-18);
+    }
+  }
+
+  // Draw a full eye view to an offscreen canvas
+  function drawEyeView(clarity){
+    const off = document.createElement('canvas');
+    off.width = canvas.width; off.height = canvas.height;
+    const g = off.getContext('2d');
+
+    // background
+    g.fillStyle = '#07101a';
+    g.fillRect(0,0,off.width,off.height);
+
+    // grid
+    for (let r=0;r<ROWS;r++){
+      for (let c=0;c<COLS;c++){
+        drawCell(g, c, r, grid[r][c], clarity);
+      }
+    }
+    drawPlayer(g, clarity);
+
+    // subtle per-eye offset (binocular disparity)
+    g.globalCompositeOperation = 'destination-over';
+    g.fillStyle = 'rgba(0,0,0,0)'; // no extra background, kept for future
+    return off;
+  }
+
+  // Composite the two eye images as red/cyan anaglyph or plain
+  function composite(){
+    const swapLR = swap.checked;
+    const lCl = swapLR ? parseFloat(rightCl.value) : parseFloat(leftCl.value);
+    const rCl = swapLR ? parseFloat(leftCl.value)  : parseFloat(rightCl.value);
+
+    const leftEye = drawEyeView(lCl);
+    const rightEye = drawEyeView(rCl);
+
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    if (!anaglyph.checked){
+      ctx.globalAlpha = 1; ctx.drawImage(leftEye,0,0);
+      ctx.globalAlpha = 0.6; ctx.drawImage(rightEye,0,0);
+      ctx.globalAlpha = 1;
+      return;
+    }
+
+    // tinting
+    const tmp = document.createElement('canvas');
+    tmp.width = canvas.width; tmp.height = canvas.height;
+    const tctx = tmp.getContext('2d');
+
+    // Left (cyan)
+    tctx.clearRect(0,0,tmp.width,tmp.height);
+    tctx.drawImage(leftEye,0,0);
+    tctx.globalCompositeOperation = 'source-atop';
+    tctx.fillStyle = 'rgba(0,255,255,'+ lCl +')';
+    tctx.fillRect(0,0,tmp.width,tmp.height);
+    tctx.globalCompositeOperation = 'source-over';
+    ctx.drawImage(tmp,0,0);
+
+    // Right (red)
+    tctx.clearRect(0,0,tmp.width,tmp.height);
+    tctx.drawImage(rightEye,0,0);
+    tctx.globalCompositeOperation = 'source-atop';
+    tctx.fillStyle = 'rgba(255,0,0,'+ rCl +')';
+    tctx.fillRect(0,0,tmp.width,tmp.height);
+    tctx.globalCompositeOperation = 'source-over';
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(tmp,0,0);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // Game loop
+  function update(dt){
+    // Player movement (grid-based)
+    if (keys['ArrowLeft'] || keys['a']) { tryMove(-1,0); keys['ArrowLeft']=keys['a']=false; }
+    if (keys['ArrowRight']|| keys['d']) { tryMove(1,0);  keys['ArrowRight']=keys['d']=false; }
+    if (keys['ArrowUp']   || keys['w']) { tryMove(0,-1); keys['ArrowUp']=keys['w']=false; }
+    if (keys['ArrowDown'] || keys['s']) { tryMove(0,1);  keys['ArrowDown']=keys['s']=false; }
+
+    // Physics cadence
+    fallAccumulator += dt*1000;
+    const scaled = fallRate / parseFloat(difficulty.value);
+    while (fallAccumulator > scaled){
+      physicsStep(scaled);
+      fallAccumulator -= scaled;
+    }
+  }
+
+  function loop(ts){
+    const dt = lastTime ? (ts - lastTime)/1000 : 0;
+    lastTime = ts;
+    update(dt);
+    composite();
+    if (running) raf = requestAnimationFrame(loop);
+  }
+
+  // Input
+  window.addEventListener('keydown', e => {
+    keys[e.key] = true;
+    if (e.key === ' ') e.preventDefault();
+  });
+  window.addEventListener('keyup',   e => { keys[e.key] = false; });
+
+  // UI bindings
+  leftCl.addEventListener('input', ()=> leftPct.textContent  = Math.round(leftCl.value*100)+'%');
+  rightCl.addEventListener('input',()=> rightPct.textContent = Math.round(rightCl.value*100)+'%');
+
+  btnStart.addEventListener('click', () => { if (!running) startGame(); });
+  btnPause.addEventListener('click', () => { if (running) stopGame(); else startGame(); });
+  btnReset.addEventListener('click', () => { resetGame(); });
+
+  function startGame(){
+    if (!running) {
+      running = true;
+      btnStart.disabled = true;
+      btnPause.disabled = false;
+      lastTime = 0;
+      raf = requestAnimationFrame(loop);
+    }
+  }
+  function stopGame(){
+    running = false;
+    btnStart.disabled = false;
+    btnPause.disabled = true;
+    if (raf) cancelAnimationFrame(raf);
+  }
+  function resetGame(){
+    stopGame();
+    score = 0; lives = 3; level = 1;
+    fallAccumulator = 0;
+    generateLevel();
+    composite();
+  }
+
+  // Boot
+  leftPct.textContent = Math.round(leftCl.value*100)+'%';
+  rightPct.textContent = Math.round(rightCl.value*100)+'%';
+  generateLevel();
+  composite();
+})();
+</script>
+</body>
+</html>
