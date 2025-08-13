@@ -42,7 +42,7 @@ const offR = document.createElement('canvas');
 offL.width=offR.width=width; offL.height=offR.height=height;
 const ctxL = offL.getContext('2d'), ctxR = offR.getContext('2d');
 
-let running=false;
+let running=true;
 let level=1, gold=0, goldGoal=5;
 let anaglyph=true, swapChannels=false, leftClarity=1, rightClarity=0.4;
 
@@ -82,6 +82,15 @@ function drawEye(ctx, clarity){
       }
     }
   }
+  // draw digger
+  if(digX>=0 && digY>=0){
+    ctx.fillStyle = `rgba(${Math.floor(255*clarity)},0,${Math.floor(255*(1-clarity))},${clarity})`;
+    const cx = digX*blockSize + blockSize/2;
+    const cy = digY*blockSize + blockSize/2;
+    ctx.beginPath();
+    ctx.arc(cx,cy,blockSize/4,0,Math.PI*2);
+    ctx.fill();
+  }
 }
 
 function composite(){
@@ -115,10 +124,6 @@ function loop(){
   }
 }
 
-// Handle touch
-canvas.addEventListener('touchstart', e=>{ const t=e.touches[0]; digX=t.clientX/width*cols|0; digY=t.clientY/height*rows|0; dig(); e.preventDefault(); });
-canvas.addEventListener('touchmove', e=>{ const t=e.touches[0]; digX=t.clientX/width*cols|0; digY=t.clientY/height*rows|0; dig(); e.preventDefault(); });
-
 function dig(){
   if(digX>=0 && digY>=0 && blocks[digY] && blocks[digY][digX]){
     let b=blocks[digY][digX];
@@ -126,6 +131,18 @@ function dig(){
     if(b.hits===0 && b.hasGold){ gold++; b.hasGold=false; updateHUD(); if(gold>=goldGoal){ nextLevel(); } }
   }
 }
+
+// touch handlers with proper scaling
+function handleTouch(e){
+  const rect=canvas.getBoundingClientRect();
+  const t=e.touches[0];
+  digX = Math.floor((t.clientX - rect.left)/rect.width*cols);
+  digY = Math.floor((t.clientY - rect.top)/rect.height*rows);
+  dig();
+  e.preventDefault();
+}
+canvas.addEventListener('touchstart', handleTouch);
+canvas.addEventListener('touchmove', handleTouch);
 
 function nextLevel(){
   level++; gold=0; goldGoal+=2; updateHUD(); genBlocks();
@@ -149,7 +166,7 @@ document.getElementById('leftClarity').oninput=(e)=>{ leftClarity=parseFloat(e.t
 document.getElementById('rightClarity').oninput=(e)=>{ rightClarity=parseFloat(e.target.value); document.getElementById('rightPct').textContent=Math.round(rightClarity*100);}
 
 // Start game
-genBlocks(); updateHUD(); running=true; loop();
+genBlocks(); updateHUD(); loop();
 </script>
 </body>
 </html>
