@@ -1,1 +1,116 @@
-a
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Touch Drawing</title>
+<style>
+  body {
+    margin: 0;
+    background: #f0f0f0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-family: sans-serif;
+  }
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    background: #fff;
+    padding: 10px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    width: 100%;
+  }
+  .toolbar label, .toolbar input, .toolbar button {
+    margin: 5px;
+  }
+  canvas {
+    background: #fff;
+    touch-action: none; /* prevents scrolling while drawing */
+    border: 1px solid #ccc;
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <label>Color: <input type="color" id="colorPicker" value="#000000"></label>
+  <label>Line Width: 
+    <input type="range" id="lineWidth" min="1" max="20" value="3">
+  </label>
+  <button id="clearBtn">Clear</button>
+</div>
+
+<canvas id="drawCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('drawCanvas');
+const ctx = canvas.getContext('2d');
+const colorPicker = document.getElementById('colorPicker');
+const lineWidth = document.getElementById('lineWidth');
+const clearBtn = document.getElementById('clearBtn');
+
+// Make canvas fill screen width and most of height
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight - document.querySelector('.toolbar').offsetHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+let drawing = false;
+
+function startPosition(e) {
+  drawing = true;
+  draw(e); 
+}
+
+function endPosition() {
+  drawing = false;
+  ctx.beginPath(); // reset path so lines don't connect unexpectedly
+}
+
+function draw(e) {
+  if (!drawing) return;
+  
+  e.preventDefault(); // stop scrolling on touch
+
+  ctx.lineWidth = lineWidth.value;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = colorPicker.value;
+
+  let x, y;
+  if (e.touches) {
+    const rect = canvas.getBoundingClientRect();
+    x = e.touches[0].clientX - rect.left;
+    y = e.touches[0].clientY - rect.top;
+  } else {
+    x = e.offsetX;
+    y = e.offsetY;
+  }
+
+  ctx.lineTo(x, y);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+}
+
+// Mouse events
+canvas.addEventListener('mousedown', startPosition);
+canvas.addEventListener('mouseup', endPosition);
+canvas.addEventListener('mousemove', draw);
+
+// Touch events
+canvas.addEventListener('touchstart', startPosition);
+canvas.addEventListener('touchend', endPosition);
+canvas.addEventListener('touchmove', draw);
+
+// Clear button
+clearBtn.addEventListener('click', () => {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+});
+</script>
+
+</body>
+</html>
