@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Amblyopia Shape Tracer</title>
+<style>
+  body {
+    margin: 0;
+    background: #d0d0d0; /* neutral grey */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-family: sans-serif;
+    touch-action: none; /* prevent scrolling while drawing */
+  }
+  canvas {
+    border: 1px solid #888;
+    background: #d0d0d0;
+    margin-top: 10px;
+  }
+  .controls {
+    margin-top: 10px;
+    display: flex;
+    gap: 10px;
+  }
+  button {
+    padding: 8px 16px;
+    font-size: 16px;
+  }
+</style>
+</head>
+<body>
+
+<h2>Amblyopia-Friendly Shape Tracer</h2>
+<canvas id="drawCanvas"></canvas>
+
+<div class="controls">
+  <button id="tryAgainBtn">Try Again</button>
+  <button id="nextShapeBtn">Next Shape</button>
+</div>
+
+<script>
+const canvas = document.getElementById('drawCanvas');
+const ctx = canvas.getContext('2d');
+const tryAgainBtn = document.getElementById('tryAgainBtn');
+const nextShapeBtn = document.getElementById('nextShapeBtn');
+
+let width, height;
+function resizeCanvas() {
+  width = window.innerWidth;
+  height = window.innerHeight - 120;
+  canvas.width = width;
+  canvas.height = height;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// Shape settings
+const shapes = ['circle', 'square', 'triangle', 'star', 'figureEight'];
+let currentShapeIndex = 0;
+let shapeX = 0, shapeY = 0;
+let shapeSize = 0;
+let shapeRotation = 0;
+
+// Drawing state
+let drawing = false;
+
+// Preset drawing style
+ctx.strokeStyle = 'red';
+ctx.lineWidth = 8;
+ctx.lineCap = 'round';
+
+// Utility: get random number in range
+function rand(min, max) { return Math.random() * (max - min) + min; }
+
+// Load next shape
+function loadShape(next = true) {
+  if(next) currentShapeIndex = (currentShapeIndex + 1) % shapes.length;
+  shapeSize = Math.min(width, height) * 0.6;
+  shapeX = rand(shapeSize/2, width - shapeSize/2);
+  shapeY = rand(shapeSize/2, height - shapeSize/2);
+  shapeRotation = rand(0, 2*Math.PI);
+  drawCanvas();
+}
+
+// Draw shape on canvas
+function drawShape() {
+  ctx.save();
+  ctx.translate(shapeX, shapeY);
+  ctx.rotate(shapeRotation);
+  ctx.globalAlpha = 0.55;
+  ctx.strokeStyle = 'blue'; // semi-transparent therapy colour
+  ctx.lineWidth = 10;
+
+  const s = shapeSize;
+
+  switch(shapes[currentShapeIndex]) {
+    case 'circle':
+      ctx.beginPath();
+      ctx.arc(0, 0, s/2, 0, 2*Math.PI);
+      ctx.stroke();
+      break;
+    case 'square':
+      ctx.strokeRect(-s/2, -s/2, s, s);
+      break;
+    case 'triangle':
+      ctx.beginPath();
+      ctx.moveTo(0, -s/2);
+      ctx.lineTo(s/2, s/2);
+      ctx.lineTo(-s/2, s/2);
+      ctx.closePath();
+      ctx.stroke();
+      break;
+    case 'star':
+      ctx.beginPath();
+      const spikes = 5;
+      const outer = s/2;
+      const inner = s/4;
+      for(let i=0;i<spikes;i++){
+        const ang = i * 2 * Math.PI / spikes - Math.PI/2;
+        const x = Math.cos(ang)*outer;
+        const y = Math.sin(ang)*outer;
+        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+        const ang2 = ang + Math.PI/spikes;
+        ctx.lineTo(Math.cos(ang2)*inner, Math.sin(ang2)*inner);
+      }
+      ctx.closePath();
+      ctx.stroke();
+      break;
+    case 'figureEight':
+      ctx.beginPath();
+      const r = s/4;
+      ctx.moveTo(-r, 0);
+      ctx.bezierCurveTo(-r, -r, r, -r, r, 0);
+      ctx.bezierCurveTo(r, r, -r, r, -r, 0);
+      ctx.stroke();
+      break;
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+// Clear and redraw everything
+function drawCanvas() {
+  ctx.clearRect(0,0,width,height);
+  drawShape();
+}
+
+// Drawing event handlers
+function startDrawing(e){
+  drawing = true;
+  draw(e);
+}
+function stopDrawing(){ drawing = false; ctx.beginPath();}
+function draw(e){
+  if(!drawing) return;
+  e.preventDefault();
+  let x, y;
+  if(e.touches){
+    const rect = canvas.getBoundingClientRect();
+    x = e.touches[0].clientX - rect.left;
+    y = e.touches[0].clientY - rect.top;
+  } else {
+    x = e.offsetX;
+    y = e.offsetY;
+  }
+  ctx.strokeStyle = 'red';
+  ctx.lineWidth = 8;
+  ctx.lineCap = 'round';
+  ctx.lineTo(x,y);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x,y);
+}
+
+// Event listeners
+canvas.addEventListener('mousedown', startDrawing);
+canvas.addEventListener('mouseup', stopDrawing);
+canvas.addEventListener('mousemove', draw);
+canvas.addEventListener('touchstart', startDrawing);
+canvas.addEventListener('touchend', stopDrawing);
+canvas.addEventListener('touchmove', draw);
+
+tryAgainBtn.addEventListener('click', drawCanvas);
+nextShapeBtn.addEventListener('click', ()=>loadShape(true));
+
+// Load first shape
+loadShape(false);
+</script>
+
+</body>
+</html>
