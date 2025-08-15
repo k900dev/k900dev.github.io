@@ -7,35 +7,73 @@
 <style>
   body {
     margin: 0;
-    background: #d0d0d0; /* neutral grey */
-    display: flex;
-    flex-direction: column;
-    align-items: center;
+    background: #d0d0d0;
     font-family: sans-serif;
-    touch-action: none; /* prevent scrolling while drawing */
+    overflow: hidden;
   }
   canvas {
     border: 1px solid #888;
     background: #d0d0d0;
-    margin-top: 10px;
+    display: block;
+    margin: 0 auto;
   }
   .controls {
-    margin-top: 10px;
+    position: fixed;
+    top: 10px;
+    right: 0;
+    width: 250px;
+    background: #fff;
+    border-left: 1px solid #888;
+    padding: 10px;
+    box-shadow: -2px 0 5px rgba(0,0,0,0.3);
+    transform: translateX(250px);
+    transition: transform 0.3s ease;
+    z-index: 1000;
+  }
+  .controls.open { transform: translateX(0); }
+  .controls h3 { margin-top:0; }
+  .toggle-btn {
+    position: fixed;
+    top: 10px;
+    right: 0;
+    z-index: 1100;
+    padding: 8px 12px;
+    cursor: pointer;
+    background: #007acc;
+    color: white;
+    border: none;
+  }
+  .controls label { display:block; margin:10px 0 5px; font-size: 14px;}
+  .controls input[type=color], .controls input[type=range] { width: 100%; }
+  .controls input[type=checkbox] { transform: scale(1.2); margin-right: 5px;}
+  .game-buttons {
+    position: fixed;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
     display: flex;
     gap: 10px;
   }
-  button {
-    padding: 8px 16px;
-    font-size: 16px;
-  }
+  .game-buttons button { padding: 8px 16px; font-size: 16px; }
 </style>
 </head>
 <body>
 
-<h2>Amblyopia-Friendly Shape Tracer</h2>
+<h2 style="text-align:center;">Amblyopia-Friendly Shape Tracer</h2>
 <canvas id="drawCanvas"></canvas>
 
-<div class="controls">
+<button class="toggle-btn" id="toggleSettings">Settings ⚙️</button>
+
+<div class="controls" id="settingsPanel">
+  <h3>Therapy Settings</h3>
+  <label>Shape Colour: <input type="color" id="shapeColor" value="#0000ff"></label>
+  <label>Drawing Colour: <input type="color" id="drawColor" value="#ff0000"></label>
+  <label><input type="checkbox" id="swapColors"> Swap Colours</label>
+  <label>Shape Opacity: <input type="range" id="shapeOpacity" min="0.1" max="1" step="0.05" value="0.55"></label>
+</div>
+
+<div class="game-buttons">
   <button id="tryAgainBtn">Try Again</button>
   <button id="nextShapeBtn">Next Shape</button>
 </div>
@@ -43,8 +81,15 @@
 <script>
 const canvas = document.getElementById('drawCanvas');
 const ctx = canvas.getContext('2d');
+
 const tryAgainBtn = document.getElementById('tryAgainBtn');
 const nextShapeBtn = document.getElementById('nextShapeBtn');
+const toggleBtn = document.getElementById('toggleSettings');
+const settingsPanel = document.getElementById('settingsPanel');
+const shapeColorInput = document.getElementById('shapeColor');
+const drawColorInput = document.getElementById('drawColor');
+const swapColorsCheckbox = document.getElementById('swapColors');
+const shapeOpacityInput = document.getElementById('shapeOpacity');
 
 let width, height;
 function resizeCanvas() {
@@ -66,126 +111,115 @@ let shapeRotation = 0;
 // Drawing state
 let drawing = false;
 
-// Preset drawing style
-ctx.strokeStyle = 'red';
-ctx.lineWidth = 8;
+// Preset stroke
+let drawStrokeStyle = '#ff0000';
+let drawLineWidth = 8;
 ctx.lineCap = 'round';
 
-// Utility: get random number in range
-function rand(min, max) { return Math.random() * (max - min) + min; }
+// Utility: random number
+function rand(min,max){return Math.random()*(max-min)+min;}
 
 // Load next shape
-function loadShape(next = true) {
+function loadShape(next=true){
   if(next) currentShapeIndex = (currentShapeIndex + 1) % shapes.length;
-  shapeSize = Math.min(width, height) * 0.6;
-  shapeX = rand(shapeSize/2, width - shapeSize/2);
-  shapeY = rand(shapeSize/2, height - shapeSize/2);
+  shapeSize = Math.min(width,height)*0.6;
+  shapeX = rand(shapeSize/2, width-shapeSize/2);
+  shapeY = rand(shapeSize/2, height-shapeSize/2);
   shapeRotation = rand(0, 2*Math.PI);
   drawCanvas();
 }
 
-// Draw shape on canvas
-function drawShape() {
+// Draw shape
+function drawShape(){
   ctx.save();
   ctx.translate(shapeX, shapeY);
   ctx.rotate(shapeRotation);
-  ctx.globalAlpha = 0.55;
-  ctx.strokeStyle = 'blue'; // semi-transparent therapy colour
+  ctx.globalAlpha = parseFloat(shapeOpacityInput.value);
+  let color = shapeColorInput.value;
+  if(swapColorsCheckbox.checked) color = drawColorInput.value;
+  ctx.strokeStyle = color;
   ctx.lineWidth = 10;
 
   const s = shapeSize;
-
-  switch(shapes[currentShapeIndex]) {
+  switch(shapes[currentShapeIndex]){
     case 'circle':
       ctx.beginPath();
-      ctx.arc(0, 0, s/2, 0, 2*Math.PI);
-      ctx.stroke();
-      break;
+      ctx.arc(0,0,s/2,0,2*Math.PI);
+      ctx.stroke(); break;
     case 'square':
-      ctx.strokeRect(-s/2, -s/2, s, s);
-      break;
+      ctx.strokeRect(-s/2,-s/2,s,s); break;
     case 'triangle':
       ctx.beginPath();
-      ctx.moveTo(0, -s/2);
-      ctx.lineTo(s/2, s/2);
-      ctx.lineTo(-s/2, s/2);
+      ctx.moveTo(0,-s/2);
+      ctx.lineTo(s/2,s/2);
+      ctx.lineTo(-s/2,s/2);
       ctx.closePath();
-      ctx.stroke();
-      break;
+      ctx.stroke(); break;
     case 'star':
       ctx.beginPath();
-      const spikes = 5;
-      const outer = s/2;
-      const inner = s/4;
+      const spikes=5; const outer=s/2; const inner=s/4;
       for(let i=0;i<spikes;i++){
-        const ang = i * 2 * Math.PI / spikes - Math.PI/2;
-        const x = Math.cos(ang)*outer;
-        const y = Math.sin(ang)*outer;
+        const ang=i*2*Math.PI/spikes-Math.PI/2;
+        const x=Math.cos(ang)*outer; const y=Math.sin(ang)*outer;
         if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-        const ang2 = ang + Math.PI/spikes;
-        ctx.lineTo(Math.cos(ang2)*inner, Math.sin(ang2)*inner);
+        const ang2=ang+Math.PI/spikes;
+        ctx.lineTo(Math.cos(ang2)*inner,Math.sin(ang2)*inner);
       }
-      ctx.closePath();
-      ctx.stroke();
-      break;
+      ctx.closePath(); ctx.stroke(); break;
     case 'figureEight':
       ctx.beginPath();
-      const r = s/4;
-      ctx.moveTo(-r, 0);
-      ctx.bezierCurveTo(-r, -r, r, -r, r, 0);
-      ctx.bezierCurveTo(r, r, -r, r, -r, 0);
-      ctx.stroke();
-      break;
+      const r=s/4;
+      ctx.moveTo(-r,0);
+      ctx.bezierCurveTo(-r,-r,r,-r,r,0);
+      ctx.bezierCurveTo(r,r,-r,r,-r,0);
+      ctx.stroke(); break;
   }
   ctx.restore();
   ctx.globalAlpha = 1;
 }
 
-// Clear and redraw everything
-function drawCanvas() {
+// Clear and redraw
+function drawCanvas(){
   ctx.clearRect(0,0,width,height);
   drawShape();
 }
 
-// Drawing event handlers
-function startDrawing(e){
-  drawing = true;
-  draw(e);
-}
-function stopDrawing(){ drawing = false; ctx.beginPath();}
+// Drawing handlers
+function startDrawing(e){drawing=true; draw(e);}
+function stopDrawing(){drawing=false; ctx.beginPath();}
 function draw(e){
   if(!drawing) return;
   e.preventDefault();
-  let x, y;
+  let x,y;
   if(e.touches){
-    const rect = canvas.getBoundingClientRect();
-    x = e.touches[0].clientX - rect.left;
-    y = e.touches[0].clientY - rect.top;
-  } else {
-    x = e.offsetX;
-    y = e.offsetY;
-  }
-  ctx.strokeStyle = 'red';
-  ctx.lineWidth = 8;
-  ctx.lineCap = 'round';
-  ctx.lineTo(x,y);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(x,y);
+    const rect=canvas.getBoundingClientRect();
+    x=e.touches[0].clientX - rect.left;
+    y=e.touches[0].clientY - rect.top;
+  } else { x=e.offsetX; y=e.offsetY; }
+  let color = drawColorInput.value;
+  if(swapColorsCheckbox.checked) color = shapeColorInput.value;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = drawLineWidth;
+  ctx.lineTo(x,y); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x,y);
 }
 
 // Event listeners
-canvas.addEventListener('mousedown', startDrawing);
-canvas.addEventListener('mouseup', stopDrawing);
-canvas.addEventListener('mousemove', draw);
-canvas.addEventListener('touchstart', startDrawing);
-canvas.addEventListener('touchend', stopDrawing);
-canvas.addEventListener('touchmove', draw);
+canvas.addEventListener('mousedown',startDrawing);
+canvas.addEventListener('mouseup',stopDrawing);
+canvas.addEventListener('mousemove',draw);
+canvas.addEventListener('touchstart',startDrawing);
+canvas.addEventListener('touchend',stopDrawing);
+canvas.addEventListener('touchmove',draw);
 
-tryAgainBtn.addEventListener('click', drawCanvas);
-nextShapeBtn.addEventListener('click', ()=>loadShape(true));
+tryAgainBtn.addEventListener('click',drawCanvas);
+nextShapeBtn.addEventListener('click',()=>loadShape(true));
 
-// Load first shape
+toggleBtn.addEventListener('click',()=>{
+  settingsPanel.classList.toggle('open');
+});
+
+// Initial shape
 loadShape(false);
 </script>
 
