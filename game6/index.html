@@ -76,6 +76,7 @@
 </div>
 
 <div class="game-buttons">
+  <button id="homeBtn">🏠 Home</button>
   <button id="tryAgainBtn">Try Again</button>
   <button id="nextShapeBtn">Next Shape</button>
 </div>
@@ -86,6 +87,7 @@ const ctx = canvas.getContext('2d');
 
 const tryAgainBtn = document.getElementById('tryAgainBtn');
 const nextShapeBtn = document.getElementById('nextShapeBtn');
+const homeBtn = document.getElementById('homeBtn');
 const toggleBtn = document.getElementById('toggleSettings');
 const settingsPanel = document.getElementById('settingsPanel');
 
@@ -115,7 +117,9 @@ let shapeRotation = 0;
 
 // Drawing state
 let drawing = false;
+let lastX = 0, lastY = 0;
 ctx.lineCap = 'round';
+ctx.lineJoin = 'round';
 const drawLineWidth = 8;
 
 // Anaglyph toggle
@@ -150,10 +154,8 @@ function drawShape(eye='left'){
 
   const s = shapeSize;
   switch(shapes[currentShapeIndex]){
-    case 'circle':
-      ctx.arc(0,0,s/2,0,2*Math.PI); break;
-    case 'square':
-      ctx.rect(-s/2,-s/2,s,s); break;
+    case 'circle': ctx.arc(0,0,s/2,0,2*Math.PI); break;
+    case 'square': ctx.rect(-s/2,-s/2,s,s); break;
     case 'triangle':
       ctx.moveTo(0,-s/2);
       ctx.lineTo(s/2,s/2);
@@ -203,38 +205,56 @@ function drawCanvas(){
 }
 
 // Drawing handlers
-function startDrawing(e){drawing=true; draw(e);}
+function startDrawing(e){
+  drawing=true;
+  const pos = getPos(e);
+  lastX = pos.x;
+  lastY = pos.y;
+  e.preventDefault();
+}
 function stopDrawing(){drawing=false; ctx.beginPath();}
 function draw(e){
   if(!drawing) return;
   e.preventDefault();
-  let x,y;
-  if(e.touches){
-    const rect=canvas.getBoundingClientRect();
-    x=e.touches[0].clientX - rect.left;
-    y=e.touches[0].clientY - rect.top;
-  } else { x=e.offsetX; y=e.offsetY; }
+  const pos = getPos(e);
+  const x=pos.x, y=pos.y;
 
-  let color = drawColorInput.value;
-  if(swapColorsCheckbox.checked) color = leftColorInput.value;
+  let color = leftColorInput.value;
+  if(swapColorsCheckbox.checked) color = rightColorInput.value;
+
   ctx.strokeStyle = color;
   ctx.lineWidth = drawLineWidth;
 
-  ctx.lineTo(x,y); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(x,y);
+  ctx.beginPath();
+  ctx.moveTo(lastX,lastY);
+  ctx.lineTo(x,y);
+  ctx.stroke();
+  lastX = x;
+  lastY = y;
+}
+
+function getPos(e){
+  const rect = canvas.getBoundingClientRect();
+  if(e.touches) return { x: e.touches[0].clientX-rect.left, y: e.touches[0].clientY-rect.top };
+  return { x: e.offsetX, y: e.offsetY };
 }
 
 // Event listeners
 canvas.addEventListener('mousedown',startDrawing);
 canvas.addEventListener('mouseup',stopDrawing);
+canvas.addEventListener('mouseout',stopDrawing);
 canvas.addEventListener('mousemove',draw);
+
 canvas.addEventListener('touchstart',startDrawing);
 canvas.addEventListener('touchend',stopDrawing);
+canvas.addEventListener('touchcancel',stopDrawing);
 canvas.addEventListener('touchmove',draw);
 
+// Button actions
 tryAgainBtn.addEventListener('click',drawCanvas);
 nextShapeBtn.addEventListener('click',()=>loadShape(true));
 toggleBtn.addEventListener('click',()=>{settingsPanel.classList.toggle('open');});
+homeBtn.addEventListener('click',()=>{ window.location.href = 'index.html'; });
 
 // Initial shape
 loadShape(false);
