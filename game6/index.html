@@ -133,6 +133,8 @@ function drawShape(){
   ctx.rotate(shapeRotation);
   ctx.globalAlpha = parseFloat(shapeOpacityInput.value);
 
+  ctx.beginPath(); // <-- START a new path for the shape
+
   let color = shapeColorInput.value; 
   if(swapColorsCheckbox.checked) color = drawColorInput.value;
   ctx.strokeStyle = color;
@@ -141,20 +143,15 @@ function drawShape(){
   const s = shapeSize;
   switch(shapes[currentShapeIndex]){
     case 'circle':
-      ctx.beginPath();
-      ctx.arc(0,0,s/2,0,2*Math.PI);
-      ctx.stroke(); break;
+      ctx.arc(0,0,s/2,0,2*Math.PI); break;
     case 'square':
-      ctx.strokeRect(-s/2,-s/2,s,s); break;
+      ctx.rect(-s/2,-s/2,s,s); break;
     case 'triangle':
-      ctx.beginPath();
       ctx.moveTo(0,-s/2);
       ctx.lineTo(s/2,s/2);
       ctx.lineTo(-s/2,s/2);
-      ctx.closePath();
-      ctx.stroke(); break;
+      ctx.closePath(); break;
     case 'star':
-      ctx.beginPath();
       const spikes=5; const outer=s/2; const inner=s/4;
       for(let i=0;i<spikes;i++){
         const ang=i*2*Math.PI/spikes-Math.PI/2;
@@ -163,19 +160,21 @@ function drawShape(){
         const ang2=ang+Math.PI/spikes;
         ctx.lineTo(Math.cos(ang2)*inner,Math.sin(ang2)*inner);
       }
-      ctx.closePath(); ctx.stroke(); break;
+      ctx.closePath(); break;
     case 'figureEight':
-      ctx.beginPath();
       const r=s/4;
       ctx.moveTo(-r,0);
       ctx.bezierCurveTo(-r,-r,r,-r,r,0);
-      ctx.bezierCurveTo(r,r,-r,r,-r,0);
-      ctx.stroke(); break;
+      ctx.bezierCurveTo(r,r,-r,r,-r,0); break;
   }
 
+  ctx.stroke();
   ctx.restore();
   ctx.globalAlpha = 1;
+
+  ctx.beginPath(); // <-- RESET the path to avoid connecting to tracing
 }
+
 
 // Clear and redraw (shape stays independent)
 function drawCanvas(){
