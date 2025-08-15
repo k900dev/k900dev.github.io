@@ -110,11 +110,8 @@ let shapeRotation = 0;
 
 // Drawing state
 let drawing = false;
-
-// Preset stroke
-let drawStrokeStyle = '#ff0000';
-let drawLineWidth = 8;
 ctx.lineCap = 'round';
+const drawLineWidth = 8;
 
 // Utility: random number
 function rand(min,max){return Math.random()*(max-min)+min;}
@@ -129,13 +126,14 @@ function loadShape(next=true){
   drawCanvas();
 }
 
-// Draw shape
+// Draw shape (independent of tracing)
 function drawShape(){
   ctx.save();
   ctx.translate(shapeX, shapeY);
   ctx.rotate(shapeRotation);
   ctx.globalAlpha = parseFloat(shapeOpacityInput.value);
-  let color = shapeColorInput.value;
+
+  let color = shapeColorInput.value; 
   if(swapColorsCheckbox.checked) color = drawColorInput.value;
   ctx.strokeStyle = color;
   ctx.lineWidth = 10;
@@ -174,11 +172,12 @@ function drawShape(){
       ctx.bezierCurveTo(r,r,-r,r,-r,0);
       ctx.stroke(); break;
   }
+
   ctx.restore();
   ctx.globalAlpha = 1;
 }
 
-// Clear and redraw
+// Clear and redraw (shape stays independent)
 function drawCanvas(){
   ctx.clearRect(0,0,width,height);
   drawShape();
@@ -196,10 +195,12 @@ function draw(e){
     x=e.touches[0].clientX - rect.left;
     y=e.touches[0].clientY - rect.top;
   } else { x=e.offsetX; y=e.offsetY; }
+
   let color = drawColorInput.value;
   if(swapColorsCheckbox.checked) color = shapeColorInput.value;
   ctx.strokeStyle = color;
   ctx.lineWidth = drawLineWidth;
+
   ctx.lineTo(x,y); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(x,y);
 }
@@ -214,10 +215,7 @@ canvas.addEventListener('touchmove',draw);
 
 tryAgainBtn.addEventListener('click',drawCanvas);
 nextShapeBtn.addEventListener('click',()=>loadShape(true));
-
-toggleBtn.addEventListener('click',()=>{
-  settingsPanel.classList.toggle('open');
-});
+toggleBtn.addEventListener('click',()=>{settingsPanel.classList.toggle('open');});
 
 // Initial shape
 loadShape(false);
