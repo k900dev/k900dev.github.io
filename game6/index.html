@@ -67,9 +67,11 @@
 
 <div class="controls" id="settingsPanel">
   <h3>Therapy Settings</h3>
-  <label>Shape Colour: <input type="color" id="shapeColor" value="#0000ff"></label>
-  <label>Drawing Colour: <input type="color" id="drawColor" value="#ff0000"></label>
+  <label>Left Eye Colour: <input type="color" id="leftColor" value="#0000ff"></label>
+  <label>Right Eye Colour: <input type="color" id="rightColor" value="#ff0000"></label>
   <label><input type="checkbox" id="swapColors"> Swap Colours</label>
+  <label>Left Eye Clarity: <input type="range" id="leftClarity" min="0" max="1" step="0.05" value="1"></label>
+  <label>Right Eye Clarity: <input type="range" id="rightClarity" min="0" max="1" step="0.05" value="0.4"></label>
   <label>Shape Opacity: <input type="range" id="shapeOpacity" min="0.1" max="1" step="0.05" value="0.55"></label>
 </div>
 
@@ -86,9 +88,12 @@ const tryAgainBtn = document.getElementById('tryAgainBtn');
 const nextShapeBtn = document.getElementById('nextShapeBtn');
 const toggleBtn = document.getElementById('toggleSettings');
 const settingsPanel = document.getElementById('settingsPanel');
-const shapeColorInput = document.getElementById('shapeColor');
-const drawColorInput = document.getElementById('drawColor');
+
+const leftColorInput = document.getElementById('leftColor');
+const rightColorInput = document.getElementById('rightColor');
 const swapColorsCheckbox = document.getElementById('swapColors');
+const leftClarityInput = document.getElementById('leftClarity');
+const rightClarityInput = document.getElementById('rightClarity');
 const shapeOpacityInput = document.getElementById('shapeOpacity');
 
 let width, height;
@@ -113,6 +118,9 @@ let drawing = false;
 ctx.lineCap = 'round';
 const drawLineWidth = 8;
 
+// Anaglyph toggle
+let anaglyphMode = true;
+
 // Utility: random number
 function rand(min,max){return Math.random()*(max-min)+min;}
 
@@ -126,17 +134,17 @@ function loadShape(next=true){
   drawCanvas();
 }
 
-// Draw shape (independent of tracing)
-function drawShape(){
+// Draw shape
+function drawShape(eye='left'){
   ctx.save();
   ctx.translate(shapeX, shapeY);
   ctx.rotate(shapeRotation);
   ctx.globalAlpha = parseFloat(shapeOpacityInput.value);
 
-  ctx.beginPath(); // <-- START a new path for the shape
+  ctx.beginPath(); // fresh path
 
-  let color = shapeColorInput.value; 
-  if(swapColorsCheckbox.checked) color = drawColorInput.value;
+  let color = eye==='left'?leftColorInput.value:rightColorInput.value;
+  if(swapColorsCheckbox.checked) color = eye==='left'?rightColorInput.value:leftColorInput.value;
   ctx.strokeStyle = color;
   ctx.lineWidth = 10;
 
@@ -171,15 +179,27 @@ function drawShape(){
   ctx.stroke();
   ctx.restore();
   ctx.globalAlpha = 1;
-
-  ctx.beginPath(); // <-- RESET the path to avoid connecting to tracing
+  ctx.beginPath();
 }
 
-
-// Clear and redraw (shape stays independent)
+// Composite two-eye view for anaglyph
 function drawCanvas(){
   ctx.clearRect(0,0,width,height);
-  drawShape();
+  if(!anaglyphMode){
+    drawShape('left'); drawShape('right'); return;
+  }
+
+  // draw left eye with clarity
+  ctx.save();
+  ctx.globalAlpha = parseFloat(leftClarityInput.value);
+  drawShape('left');
+  ctx.restore();
+
+  // draw right eye with clarity
+  ctx.save();
+  ctx.globalAlpha = parseFloat(rightClarityInput.value);
+  drawShape('right');
+  ctx.restore();
 }
 
 // Drawing handlers
@@ -196,7 +216,7 @@ function draw(e){
   } else { x=e.offsetX; y=e.offsetY; }
 
   let color = drawColorInput.value;
-  if(swapColorsCheckbox.checked) color = shapeColorInput.value;
+  if(swapColorsCheckbox.checked) color = leftColorInput.value;
   ctx.strokeStyle = color;
   ctx.lineWidth = drawLineWidth;
 
