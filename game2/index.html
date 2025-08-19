@@ -1,34 +1,94 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Amblyopia Shooter</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shooter Game with Amblyopia Controls</title>
   <style>
     body {
       margin: 0;
-      background: black;
       overflow: hidden;
-      touch-action: none;
-    }
-    canvas {
-      display: block;
-      margin: auto;
-      background: #111;
-    }
-    #hud {
-      position: absolute;
-      top: 10px;
-      left: 10px;
+      background: #000;
+      font-family: sans-serif;
       color: white;
-      font-size: 20px;
-      font-family: Arial, sans-serif;
+    }
+
+    #gameCanvas {
+      display: block;
+      margin: 0 auto;
+      background: black;
+    }
+
+    /* Slide-out settings */
+    #settings {
+      position: fixed;
+      top: 0;
+      right: -250px;
+      width: 250px;
+      height: 100%;
+      background: rgba(0,0,0,0.9);
+      padding: 20px;
+      box-shadow: -2px 0 5px rgba(0,0,0,0.5);
+      transition: right 0.3s ease;
+      color: white;
+    }
+
+    #settings.open {
+      right: 0;
+    }
+
+    #settings h2 {
+      font-size: 18px;
+      margin-top: 0;
+    }
+
+    #toggleSettings {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #444;
+      border: none;
+      padding: 10px;
+      color: white;
+      font-size: 16px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .color-control {
+      margin-bottom: 15px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 14px;
     }
   </style>
 </head>
 <body>
+  <button id="toggleSettings">⚙️</button>
+  <div id="settings">
+    <h2>Colour Settings</h2>
+    <div class="color-control">
+      <label for="bgColor">Background</label>
+      <input type="color" id="bgColor" value="#000000">
+    </div>
+    <div class="color-control">
+      <label for="playerColor">Player</label>
+      <input type="color" id="playerColor" value="#00ff00">
+    </div>
+    <div class="color-control">
+      <label for="enemyColor">Enemy</label>
+      <input type="color" id="enemyColor" value="#ff0000">
+    </div>
+    <div class="color-control">
+      <label for="bulletColor">Bullet</label>
+      <input type="color" id="bulletColor" value="#ffff00">
+    </div>
+  </div>
+
   <canvas id="gameCanvas"></canvas>
-  <div id="hud">Lives: <span id="lives"></span> | Score: <span id="score"></span></div>
 
   <script>
     const canvas = document.getElementById("gameCanvas");
@@ -36,162 +96,159 @@
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
-    // Player settings
-    const player = {
-      x: canvas.width / 2,
+    // Game settings
+    let playerColor = "#00ff00";
+    let enemyColor = "#ff0000";
+    let bulletColor = "#ffff00";
+    let bgColor = "#000000";
+
+    let player = {
+      x: canvas.width / 2 - 25,
       y: canvas.height - 60,
-      w: 40,
-      h: 40,
+      width: 50,
+      height: 20,
       speed: 7,
-      color: "cyan"
+      dx: 0
     };
 
-    // Game settings
     let bullets = [];
     let enemies = [];
+    let lives = 5; // Increased lives
     let score = 0;
-    let lives = 5; // configurable lives
-    const enemySpawnRate = 100; // higher = fewer enemies (default was ~50)
 
-    // HUD
-    const livesEl = document.getElementById("lives");
-    const scoreEl = document.getElementById("score");
-    livesEl.textContent = lives;
-    scoreEl.textContent = score;
+    let rightPressed = false;
+    let leftPressed = false;
+    let spacePressed = false;
 
-    // Input
-    let keys = {};
-    document.addEventListener("keydown", e => { keys[e.code] = true; });
-    document.addEventListener("keyup", e => { keys[e.code] = false; });
-
-    // Touch input (drag to move, tap/hold to shoot)
-    let touchX = null;
-    let shooting = false;
-    canvas.addEventListener("touchstart", e => {
-      shooting = true;
-      touchX = e.touches[0].clientX;
-    });
-    canvas.addEventListener("touchmove", e => {
-      touchX = e.touches[0].clientX;
-    });
-    canvas.addEventListener("touchend", () => {
-      shooting = false;
-      touchX = null;
+    // Controls
+    document.addEventListener("keydown", (e) => {
+      if (e.code === "ArrowRight") rightPressed = true;
+      if (e.code === "ArrowLeft") leftPressed = true;
+      if (e.code === "Space") spacePressed = true;
     });
 
-    function drawPlayer() {
-      ctx.fillStyle = player.color;
-      ctx.fillRect(player.x, player.y, player.w, player.h);
+    document.addEventListener("keyup", (e) => {
+      if (e.code === "ArrowRight") rightPressed = false;
+      if (e.code === "ArrowLeft") leftPressed = false;
+      if (e.code === "Space") spacePressed = false;
+    });
+
+    // Bullets
+    function fireBullet() {
+      if (spacePressed) {
+        bullets.push({ x: player.x + player.width / 2 - 2, y: player.y, width: 4, height: 10 });
+      }
     }
 
-    function drawBullets() {
-      ctx.fillStyle = "yellow";
-      bullets.forEach((b, i) => {
-        b.y -= 10;
-        ctx.fillRect(b.x, b.y, 5, 15);
-        if (b.y < 0) bullets.splice(i, 1);
-      });
-    }
-
+    // Enemies
     function spawnEnemy() {
-      if (Math.random() < 1 / enemySpawnRate) {
+      if (Math.random() < 0.02) { // reduced spawn rate
         enemies.push({
           x: Math.random() * (canvas.width - 40),
-          y: -40,
-          w: 40,
-          h: 40,
-          color: "red"
+          y: -20,
+          width: 40,
+          height: 20,
+          speed: 2
         });
       }
     }
 
-    function drawEnemies() {
-      enemies.forEach((e, i) => {
-        e.y += 3;
-        ctx.fillStyle = e.color;
-        ctx.fillRect(e.x, e.y, e.w, e.h);
+    // Draw player
+    function drawPlayer() {
+      ctx.fillStyle = playerColor;
+      ctx.fillRect(player.x, player.y, player.width, player.height);
+    }
 
-        // Collide with player
-        if (
-          e.x < player.x + player.w &&
-          e.x + e.w > player.x &&
-          e.y < player.y + player.h &&
-          e.y + e.h > player.y
-        ) {
-          enemies.splice(i, 1);
-          lives--;
-          livesEl.textContent = lives;
-          if (lives <= 0) {
-            alert("Game Over! Final Score: " + score);
-            document.location.reload();
-          }
-        }
-
-        // Collide with bullets
-        bullets.forEach((b, j) => {
-          if (
-            b.x < e.x + e.w &&
-            b.x + 5 > e.x &&
-            b.y < e.y + e.h &&
-            b.y + 15 > e.y
-          ) {
-            enemies.splice(i, 1);
-            bullets.splice(j, 1);
-            score += 10;
-            scoreEl.textContent = score;
-          }
-        });
-
-        // Remove off-screen enemies
-        if (e.y > canvas.height) enemies.splice(i, 1);
+    // Draw bullets
+    function drawBullets() {
+      ctx.fillStyle = bulletColor;
+      bullets.forEach((bullet, index) => {
+        ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+        bullet.y -= 7;
+        if (bullet.y < 0) bullets.splice(index, 1);
       });
     }
 
-    let fireCooldown = 0;
-    function shoot() {
-      if ((keys["Space"] || shooting) && fireCooldown <= 0) {
-        bullets.push({
-          x: player.x + player.w / 2 - 2.5,
-          y: player.y
+    // Draw enemies
+    function drawEnemies() {
+      ctx.fillStyle = enemyColor;
+      enemies.forEach((enemy, eIndex) => {
+        ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+        enemy.y += enemy.speed;
+
+        if (enemy.y + enemy.height > canvas.height) {
+          enemies.splice(eIndex, 1);
+          lives--;
+        }
+
+        bullets.forEach((bullet, bIndex) => {
+          if (
+            bullet.x < enemy.x + enemy.width &&
+            bullet.x + bullet.width > enemy.x &&
+            bullet.y < enemy.y + enemy.height &&
+            bullet.y + bullet.height > enemy.y
+          ) {
+            enemies.splice(eIndex, 1);
+            bullets.splice(bIndex, 1);
+            score++;
+          }
         });
-        fireCooldown = 10;
-      }
+      });
     }
 
+    // Move player
     function movePlayer() {
-      if (keys["ArrowLeft"] || keys["KeyA"]) {
-        player.x -= player.speed;
-      }
-      if (keys["ArrowRight"] || keys["KeyD"]) {
+      if (rightPressed && player.x + player.width < canvas.width) {
         player.x += player.speed;
       }
-
-      // Touch move
-      if (touchX !== null) {
-        player.x = touchX - player.w / 2;
+      if (leftPressed && player.x > 0) {
+        player.x -= player.speed;
       }
-
-      // Keep in bounds
-      if (player.x < 0) player.x = 0;
-      if (player.x + player.w > canvas.width) player.x = canvas.width - player.w;
     }
 
-    function gameLoop() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Draw score & lives
+    function drawHUD() {
+      ctx.fillStyle = "white";
+      ctx.font = "20px Arial";
+      ctx.fillText("Score: " + score, 20, 30);
+      ctx.fillText("Lives: " + lives, 20, 60);
+    }
 
-      movePlayer();
+    // Game loop
+    function gameLoop() {
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
       drawPlayer();
       drawBullets();
-      spawnEnemy();
       drawEnemies();
+      movePlayer();
+      fireBullet();
+      spawnEnemy();
+      drawHUD();
 
-      shoot();
-      if (fireCooldown > 0) fireCooldown--;
-
-      requestAnimationFrame(gameLoop);
+      if (lives > 0) {
+        requestAnimationFrame(gameLoop);
+      } else {
+        ctx.fillStyle = "white";
+        ctx.font = "40px Arial";
+        ctx.fillText("Game Over", canvas.width / 2 - 100, canvas.height / 2);
+      }
     }
 
     gameLoop();
+
+    // Settings menu toggle
+    document.getElementById("toggleSettings").addEventListener("click", () => {
+      document.getElementById("settings").classList.toggle("open");
+    });
+
+    // Apply amblyopia colour settings
+    document.getElementById("bgColor").addEventListener("input", (e) => bgColor = e.target.value);
+    document.getElementById("playerColor").addEventListener("input", (e) => playerColor = e.target.value);
+    document.getElementById("enemyColor").addEventListener("input", (e) => enemyColor = e.target.value);
+    document.getElementById("bulletColor").addEventListener("input", (e) => bulletColor = e.target.value);
+
   </script>
 </body>
 </html>
