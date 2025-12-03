@@ -1,0 +1,117 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>SSRS Schedules Calendar (FullCalendar)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- FullCalendar v5 UMD builds from CDN -->
+  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
+
+  <!-- rrule plugin + rrule lib (for recurring events) -->
+  <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/rrule@5.11.3/main.global.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/rrule@2.7.1/dist/es5/rrule.min.js"></script>
+
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; margin: 0; padding: 12px; background:#f5f7fb; }
+    h1 { font-weight: 600; margin: 0 0 10px; }
+    #topbar { display:flex; gap:12px; align-items:center; margin-bottom:12px; }
+    #calendar { max-width:1200px; margin: 0 auto; background: #fff; padding:12px; border-radius:8px; box-shadow:0 6px 18px rgba(20,30,60,0.08); }
+    .fc-event { cursor: pointer; }
+    .legend { display:flex; gap:8px; flex-wrap:wrap; margin-left:auto; }
+    .legend-item { display:flex; gap:6px; align-items:center; font-size:0.9rem; }
+    .swatch { width:12px; height:12px; border-radius:2px; display:inline-block; }
+  </style>
+</head>
+<body>
+
+  <div id="topbar">
+    <h1>SSRS Schedules — Calendar</h1>
+    <div style="margin-left:12px;color:#666">Shows next runs & recurring schedules (click event for details)</div>
+
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <div id="calendar"></div>
+
+  <script>
+    // Config
+    const EVENTS_JSON = 'events.json'; // file next to the HTML
+
+    // Build calendar
+    document.addEventListener('DOMContentLoaded', async function() {
+      const calendarEl = document.getElementById('calendar');
+
+      // fetch events file (must be served via http(s); file:// may be blocked by browsers)
+      let events = [];
+      try {
+        const resp = await fetch(EVENTS_JSON);
+        events = await resp.json();
+      } catch (err) {
+        console.error('Failed to load events.json — falling back to sample events', err);
+        events = []; // might place inline fallback events here
+      }
+
+      // Build legend based on unique categories/colors
+      buildLegend(events);
+
+      const calendar = new FullCalendar.Calendar(calendarEl, {
+        plugins: [ 'rrule' ],
+        initialView: 'timeGridWeek',             // similar to Outlook week view
+        headerToolbar: {
+          left: 'prev,next today',
+          center: 'title',
+          right: 'timeGridDay,timeGridWeek,dayGridMonth,listWeek'
+        },
+        allDaySlot: false,
+        slotMinTime: "00:00:00",
+        slotMaxTime: "24:00:00",
+        slotDuration: '00:15:00',                // 15 minute slots
+        eventTimeFormat: { hour: '2-digit', minute: '2-digit', hour12: false },
+        height: 'auto',
+        nowIndicator: true,
+        editable: false,
+        selectable: true,
+        events: events, // FullCalendar accepts event objects and rrule objects
+        eventClick: function(info) {
+          // Show some useful details — you can customise this to link into SSRS
+          const e = info.event;
+          const props = e.extendedProps || {};
+          const msg = [
+            `Report: ${props.reportName || e.title}`,
+            `Subscription ID: ${props.subscriptionId || '—'}`,
+            `Type: ${props.type || 'Scheduled'}`,
+            `Start: ${e.start ? e.start.toLocaleString() : '—'}`,
+            `End: ${e.end ? e.end.toLocaleString() : '—'}`,
+            props.description ? `Notes: ${props.description}` : null,
+            props.command ? `Command: ${props.command}` : null
+          ].filter(Boolean).join('\n');
+          alert(msg);
+        },
+        eventDidMount: function(info) {
+          // small tweak to show short title on small screens
+        }
+      });
+
+      calendar.render();
+    });
+
+    function buildLegend(events) {
+      const legendEl = document.getElementById('legend');
+      const buckets = {};
+      for (const ev of events) {
+        const key = ev.group || ev.color || ev.reportName || 'Other';
+        if (!buckets[key]) buckets[key] = ev.color || '#2b8cff';
+      }
+      for (const [k,color] of Object.entries(buckets)) {
+        const item = document.createElement('div');
+        item.className = 'legend-item';
+        item.innerHTML = `<span class="swatch" style="background:${color}"></span><span>${k}</span>`;
+        legendEl.appendChild(item);
+      }
+    }
+  </script>
+
+</body>
+</html>
